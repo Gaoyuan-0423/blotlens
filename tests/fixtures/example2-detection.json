@@ -1,0 +1,211 @@
+{
+  "fixtureKind": "HUMAN_AUTHORED_MOCK_NOT_MODEL_OUTPUT",
+  "sourceWidth": 584,
+  "sourceHeight": 718,
+  "sourceSha256": "99dd434519ba3ea9524887093d78cc74d671a753700c44d541078900a3c28ad8",
+  "notice": "Manually authored regression input from a user-provided screenshot. Rectangles are approximate, not independent ground truth. No screenshot pixels are bundled. Never report this fixture as a live API result or detection accuracy.",
+  "detection": {
+    "panel": {
+      "x": 0.4160958904109589,
+      "y": 0.18523676880222842,
+      "width": 0.2756849315068493,
+      "height": 0.3370473537604457
+    },
+    "lanes": [
+      {
+        "id": "lane-1",
+        "label": "Ctrl"
+      },
+      {
+        "id": "lane-2",
+        "label": "IL-1β"
+      },
+      {
+        "id": "lane-3",
+        "label": "IL-1β+SOX12 OE"
+      }
+    ],
+    "rows": [
+      {
+        "id": "comp",
+        "label": "COMP",
+        "role": "target",
+        "referenceRowId": "actin",
+        "bands": [
+          {
+            "laneId": "lane-1",
+            "rect": {
+              "x": 0.4229452054794521,
+              "y": 0.20055710306406685,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          },
+          {
+            "laneId": "lane-2",
+            "rect": {
+              "x": 0.511986301369863,
+              "y": 0.20055710306406685,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          },
+          {
+            "laneId": "lane-3",
+            "rect": {
+              "x": 0.601027397260274,
+              "y": 0.20055710306406685,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          }
+        ]
+      },
+      {
+        "id": "tnf",
+        "label": "TNF-α",
+        "role": "target",
+        "referenceRowId": "actin",
+        "bands": [
+          {
+            "laneId": "lane-1",
+            "rect": {
+              "x": 0.4229452054794521,
+              "y": 0.26880222841225626,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          },
+          {
+            "laneId": "lane-2",
+            "rect": {
+              "x": 0.511986301369863,
+              "y": 0.26880222841225626,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          },
+          {
+            "laneId": "lane-3",
+            "rect": {
+              "x": 0.601027397260274,
+              "y": 0.26880222841225626,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          }
+        ]
+      },
+      {
+        "id": "il6",
+        "label": "IL-6",
+        "role": "target",
+        "referenceRowId": "actin",
+        "bands": [
+          {
+            "laneId": "lane-1",
+            "rect": {
+              "x": 0.4229452054794521,
+              "y": 0.3370473537604457,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          },
+          {
+            "laneId": "lane-2",
+            "rect": {
+              "x": 0.511986301369863,
+              "y": 0.3370473537604457,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          },
+          {
+            "laneId": "lane-3",
+            "rect": {
+              "x": 0.601027397260274,
+              "y": 0.3370473537604457,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          }
+        ]
+      },
+      {
+        "id": "il10",
+        "label": "IL-10",
+        "role": "target",
+        "referenceRowId": "actin",
+        "bands": [
+          {
+            "laneId": "lane-1",
+            "rect": {
+              "x": 0.4229452054794521,
+              "y": 0.4052924791086351,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          },
+          {
+            "laneId": "lane-2",
+            "rect": {
+              "x": 0.511986301369863,
+              "y": 0.4052924791086351,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          },
+          {
+            "laneId": "lane-3",
+            "rect": {
+              "x": 0.601027397260274,
+              "y": 0.4052924791086351,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          }
+        ]
+      },
+      {
+        "id": "actin",
+        "label": "β-actin",
+        "role": "reference",
+        "referenceRowId": null,
+        "bands": [
+          {
+            "laneId": "lane-1",
+            "rect": {
+              "x": 0.4229452054794521,
+              "y": 0.47493036211699163,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          },
+          {
+            "laneId": "lane-2",
+            "rect": {
+              "x": 0.511986301369863,
+              "y": 0.47493036211699163,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          },
+          {
+            "laneId": "lane-3",
+            "rect": {
+              "x": 0.601027397260274,
+              "y": 0.47493036211699163,
+              "width": 0.07534246575342465,
+              "height": 0.03203342618384401
+            }
+          }
+        ]
+      }
+    ],
+    "controlLaneId": "lane-1",
+    "warnings": [
+      "HUMAN AUTHORED MOCK: approximate review rectangles, not live model recognition.",
+      "Screenshot-derived intensity is an approximation; the published bar chart is excluded from all measurement rectangles."
+    ]
+  }
+}

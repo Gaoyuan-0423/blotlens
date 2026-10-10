@@ -1,0 +1,128 @@
+{
+  "executedAt": "2026-10-10T15:03:48.689Z",
+  "applicationVersion": "0.1.0",
+  "algorithmVersion": "screenshot-density-1",
+  "node": "v22.22.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "sourceHashes": {
+    "scripts/evaluate.ts": "51c092fbd61b1d90b8508af656ac2a5d62cb9bf4960d26a6a340f59566cac7f5",
+    "src/core/index.ts": "cd616cb92f801e8e73808f156166c63cbd4c1868a0f1e2df8eac2b83d96837fb",
+    "src/core/types.ts": "17503a6e2cc558244ddcfdb5cf8d2aed07f392b61149afe2fcf35bbbfab29df6",
+    "shared/detection.ts": "0bc4364c87d3a21cc48192e4f0a154c070680078dd5906ce36ab9fdcb210b30d"
+  },
+  "status": "passed",
+  "assertions": 105,
+  "numericTruth": {
+    "roiCount": 9,
+    "targetFoldEstimates": [
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        0.25,
+        3
+      ]
+    ]
+  },
+  "fixtureChecks": [
+    {
+      "name": "example1",
+      "rows": 5,
+      "lanes": 2,
+      "status": "manual-fixture-shape-checked",
+      "liveRecognition": false,
+      "screenshotPixelsBundled": false
+    },
+    {
+      "name": "example2",
+      "rows": 5,
+      "lanes": 3,
+      "status": "manual-fixture-shape-checked",
+      "liveRecognition": false,
+      "screenshotPixelsBundled": false
+    }
+  ],
+  "imagej": {
+    "status": "passed",
+    "version": "1.53a",
+    "imageSha256": "4b6109cf04a8f5550c94448fbec5b6ef148e3d5e4733748d20d987446229f596",
+    "roiCount": 9,
+    "maximumAbsoluteDifference": 0,
+    "comparisons": [
+      {
+        "row": 1,
+        "lane": 1,
+        "bandSum": 3000,
+        "backgroundMean": 10,
+        "net": 2400
+      },
+      {
+        "row": 1,
+        "lane": 2,
+        "bandSum": 6000,
+        "backgroundMean": 20,
+        "net": 4800
+      },
+      {
+        "row": 1,
+        "lane": 3,
+        "bandSum": 3000,
+        "backgroundMean": 30,
+        "net": 1200
+      },
+      {
+        "row": 2,
+        "lane": 1,
+        "bandSum": 4200,
+        "backgroundMean": 10,
+        "net": 3600
+      },
+      {
+        "row": 2,
+        "lane": 2,
+        "bandSum": 3000,
+        "backgroundMean": 20,
+        "net": 1800
+      },
+      {
+        "row": 2,
+        "lane": 3,
+        "bandSum": 7200,
+        "backgroundMean": 30,
+        "net": 5400
+      },
+      {
+        "row": 3,
+        "lane": 1,
+        "bandSum": 3600,
+        "backgroundMean": 10,
+        "net": 3000
+      },
+      {
+        "row": 3,
+        "lane": 2,
+        "bandSum": 7200,
+        "backgroundMean": 20,
+        "net": 6000
+      },
+      {
+        "row": 3,
+        "lane": 3,
+        "bandSum": 3300,
+        "backgroundMean": 30,
+        "net": 1500
+      }
+    ],
+    "scope": "Independent ImageJ fixed-ROI raw sum, pooled background mean and net signal on an 8-bit synthetic PNG. Does not validate OCR, automatic ROI placement or biological accuracy."
+  },
+  "savedRecords": [],
+  "exclusions": [
+    "No model endpoint called",
+    "No claim of automatic detection accuracy",
+    "No biological or peer-review effectiveness validation"
+  ]
+}
