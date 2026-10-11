@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { useState } from "react";
 import { X } from "lucide-react";
 import type { ReviewSession } from "./core/types";
@@ -86,7 +87,7 @@ export function AddRoiDialog({
         className="modal compact"
         role="dialog"
         aria-modal="true"
-        aria-label="新增取样框"
+        aria-label={t("新增取样框")}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.stopPropagation();
@@ -95,32 +96,34 @@ export function AddRoiDialog({
         }}
       >
         <div className="modal-heading">
-          <h2>新增取样框</h2>
+          <h2>{t("新增取样框")}</h2>
           <button
             className="icon-button"
-            aria-label="关闭新增取样框"
+            aria-label={t("关闭新增取样框")}
             onClick={onClose}
           >
             <X size={18} />
           </button>
         </div>
-        <p>只补当前缺少的框，已有取样保持原位。选好归属后，在原图上拖画。</p>
+        <p>
+          {t("只补当前缺少的框，已有取样保持原位。选好归属后，在原图上拖画。")}
+        </p>
         <label>
-          取样类型
+          {t("取样类型")}
           <select
-            aria-label="新增框类型"
+            aria-label={t("新增框类型")}
             value={kind}
             onChange={(e) => switchKind(e.target.value as typeof kind)}
           >
-            <option value="band">条带</option>
-            <option value="background">背景</option>
+            <option value="band">{t("条带")}</option>
+            <option value="background">{t("背景")}</option>
           </select>
         </label>
         <div className="two-fields">
           <label>
-            蛋白
+            {t("蛋白")}
             <select
-              aria-label="新增框蛋白"
+              aria-label={t("新增框蛋白")}
               value={rowId}
               onChange={(e) => {
                 const id = e.target.value;
@@ -141,15 +144,15 @@ export function AddRoiDialog({
               ))}
               {kind === "band" && (
                 <option value="__new" disabled={session.rows.length >= 100}>
-                  ＋ 新建蛋白行
+                  {t("＋ 新建蛋白行")}
                 </option>
               )}
             </select>
           </label>
           <label>
-            泳道
+            {t("泳道")}
             <select
-              aria-label="新增框泳道"
+              aria-label={t("新增框泳道")}
               value={laneId}
               onChange={(e) => setLaneId(e.target.value)}
             >
@@ -162,13 +165,13 @@ export function AddRoiDialog({
                     disabled={kind === "background" && !exists}
                   >
                     {lane.label}
-                    {kind === "band" && exists ? "（已有条带）" : ""}
+                    {kind === "band" && exists ? t("（已有条带）") : ""}
                   </option>
                 );
               })}
               {kind === "band" && (
                 <option value="__new" disabled={session.lanes.length >= 100}>
-                  ＋ 新建泳道
+                  {t("＋ 新建泳道")}
                 </option>
               )}
             </select>
@@ -177,66 +180,69 @@ export function AddRoiDialog({
         {kind === "band" && rowId === "__new" && (
           <div className="two-fields">
             <label>
-              蛋白名称
+              {t("蛋白名称")}
               <input
-                aria-label="新蛋白名称"
+                aria-label={t("新蛋白名称")}
                 maxLength={2000}
                 value={rowLabel}
                 onChange={(e) => setRowLabel(e.target.value)}
-                placeholder="例如 IL-6"
+                placeholder={t("例如 IL-6")}
               />
             </label>
             <label>
-              蛋白类型
+              {t("蛋白类型")}
               <select
-                aria-label="新蛋白类型"
+                aria-label={t("新蛋白类型")}
                 value={role}
                 onChange={(e) => setRole(e.target.value as typeof role)}
               >
-                <option value="target">目标蛋白</option>
-                <option value="reference">内参</option>
+                <option value="target">{t("目标蛋白")}</option>
+                <option value="reference">{t("内参")}</option>
               </select>
             </label>
           </div>
         )}
         {kind === "band" && laneId === "__new" && (
           <label>
-            泳道名称
+            {t("泳道名称")}
             <input
-              aria-label="新泳道名称"
+              aria-label={t("新泳道名称")}
               maxLength={2000}
               value={laneLabel}
               onChange={(e) => setLaneLabel(e.target.value)}
-              placeholder="例如 Treatment"
+              placeholder={t("例如 Treatment")}
             />
           </label>
         )}
         {kind === "band" && band ? (
           <p className="inline-warning">
-            该蛋白和泳道已有条带。请直接调整原框，或选择缺失的泳道。
+            {t("该蛋白和泳道已有条带。请直接调整原框，或选择缺失的泳道。")}
           </p>
         ) : kind === "band" && size ? (
           <p>
-            新增条带沿用同行的 {size.width} × {size.height} px
-            尺寸，拖画的位置决定中心；已有条带不会移动。
+            {t("新增条带沿用同行的 ")}
+            {size.width} × {size.height}
+            {t(" px 尺寸，拖画的位置决定中心；已有条带不会移动。")}
           </p>
         ) : (
           <p>
             {kind === "background"
-              ? "在该条带附近画出干净背景，避开条带、边框和文字。"
-              : "拖画矩形决定第一个条带的位置和尺寸。"}
+              ? t("在该条带附近画出干净背景，避开条带、边框和文字。")
+              : t("拖画矩形决定第一个条带的位置和尺寸。")}
           </p>
         )}
         {kind === "background" && !band && (
-          <p className="inline-warning">请先选择已有条带的蛋白和泳道。</p>
+          <p className="inline-warning">
+            {t("请先选择已有条带的蛋白和泳道。")}
+          </p>
         )}
         {kind === "background" && band && band.backgrounds.length >= 20 && (
           <p className="inline-warning">
-            该条带已有 20 个背景框，请先删除多余背景。
+            {t("该条带已有 20 个背景框，请先删除多余背景。")}
           </p>
         )}
         <button className="primary full" disabled={blocked} onClick={start}>
-          开始画框
+          {t("开始画框")}
         </button>
       </section>
     </div>

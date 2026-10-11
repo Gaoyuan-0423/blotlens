@@ -1,0 +1,13 @@
+import { build } from 'esbuild';
+import { mkdir, cp, writeFile, readFile, rm } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+await mkdir('.release/package/server', { recursive: true });
+await build({ entryPoints: ['server/index.ts'], outfile: '.release/package/server/index.mjs', bundle: true, platform: 'node', format: 'esm', target: 'node24', external: ['vite'], minify: false });
+await rm('.release/package/dist', { recursive: true, force: true });
+await cp('dist', '.release/package/dist', { recursive: true, force: true });
+await cp('deploy', '.release/package/deploy', { recursive: true, force: true });
+await cp('LICENSE', '.release/package/LICENSE');
+const pkg = JSON.parse(await readFile('package.json', 'utf8'));
+await writeFile('.release/package/BUILD.json', JSON.stringify({ version: pkg.version, commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), builtAt: new Date().toISOString() }, null, 2));
+execFileSync('tar', ['-czf', '.release/blotlens-linux.tar.gz', '-C', '.release/package', '.']);
+console.log('Created .release/blotlens-linux.tar.gz (Node 24, no npm install required on server)');

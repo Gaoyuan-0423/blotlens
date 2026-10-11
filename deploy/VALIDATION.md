@@ -1,0 +1,29 @@
+# 公网模式验证记录（2026-10-11）
+
+- 新增服务测试：并发用户独立密钥、配置不共享、导出响应脱敏、Host/Origin校验、非法上游地址/路径/密钥阻断、代理头校验、限流及并发槽释放、非法部署配置失败关闭。
+- 新增浏览器测试：公网设置不发共享配置请求；识别携带本页 Key；导出及浏览器持久存储不包含 Key；另一浏览器会话及刷新后无配置。
+- 原有测量算法、人工框选、撤销、背景模式、裁剪识别继续回归。
+- 固定模型响应测试不构成真实供应商验证。真实 API、国内外网络体验和生产 TLS 验收分别记录，不以合成测试替代。
+
+结果：132 项单元测试通过；Edge 浏览器 35 项原有流程及 1 项新增公网流程通过，2 项外部原始截图测试因未提供路径跳过。首轮默认 Chromium 未安装，改用已安装 Edge；新增测试按钮选择器修正后单独复跑通过。生产 Node 单文件包已验证 hosted 配置接口和 Host 限制。
+
+## 实际上线验收
+
+2026-10-11（Asia/Shanghai）：用户批准公开访问及 Let's Encrypt 协议后，v0.2.0-rc.1 已部署到 blotlens.top，应用代码提交 e2207cb428625d538092a230ac61959be76751d2。
+
+- 主域与 www 的 A 记录已生效；https://blotlens.top 返回 200，www HTTPS 返回 301 至主域，HTTP 返回 308 至 HTTPS。
+- HTTPS 证书通过系统信任链校验，签发者 Let's Encrypt YE1；Caddy 负责续期。首次证书有效期至 2027-01-09（证书以实际续期结果为准）。
+- 生产配置接口返回 hosted=true 且不含用户 Key；POST 配置返回 405；跨站识别请求返回 403。
+- 公网浏览器中合成示例产生 12 个目标相对值；PNG 图表成功下载。本次没有提交真实截图或调用付费模型。
+- blotlens 与 caddy 均 active 且 enabled。Node 仅监听 127.0.0.1:4317，Caddy 对外提供 80/443；应用空闲时 systemd 报告约 20 MB 内存（不是并发负载测试）。
+- 真实视觉供应商调用、独立截图集和国内外多运营商网络验证尚未执行。
+
+## 连接诊断与可选记住配置
+
+2026-10-11：新增 `/api/check` 模型列表诊断与区分 HTTP 401/403 的安全错误提示；默认仍不持久保存密钥，用户可选浏览器 localStorage 保存。单元测试 138 项通过，覆盖来源校验、允许列表、无截图连接验证、错误正文不回显、恢复校验与清除。真实 DeepSeek 认证原因仍待用户在设置中验证；没有接收或使用用户真实 Key。
+
+## 中文 / English interface (2026-10-11)
+
+The v0.2.1 update adds an explicit language selector and browser preference, 482 translated application messages, English chart annotations, localized CSV checks, and linked English/Chinese READMEs. Scientific labels and original model notes remain unchanged. Unit tests verify translation placeholders and dynamic provider errors. Browser checks verify live switching without changing chart geometry, English SVG export, refresh persistence, hosted settings/error messages and a 390 px layout. Optional original-figure tests still require the separately supplied image files.
+
+v0.2.1 增加中文 / English 切换与浏览器语言偏好，翻译界面与检查提示，柱状图随当前语言导出。语言切换不重置取样或改变数值。蛋白、泳道标签和模型原始备注保持原文。

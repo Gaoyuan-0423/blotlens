@@ -1,11 +1,17 @@
 import { createServer, type IncomingMessage, type RequestListener, type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { isIP, type AddressInfo } from 'node:net';
 import { parseDetectionResponse, PROMPT_VERSION, RECOGNITION_PROMPT } from '../shared/detection';
 import { validateImageInput } from './image';
 import type { RecognitionResult } from '../src/core/types';
 
 export interface ProviderSettings { baseUrl: string; model: string; apiKey: string }
 export interface ServerOptions {
+  /** HTTPS origin behind a loopback reverse proxy; omitted for the local workbench. */
+  publicOrigin?: string;
+  allowedProviderUrls?: string[];
+  maxConcurrentRequests?: number;
+  requestsPerWindow?: number;
+  rateWindowMs?: number;
   webHandler?: RequestListener;
   fetchImpl?: typeof fetch;
   recognitionTimeoutMs?: number;
@@ -82,32 +88,67 @@ async function limitedResponse(response: Response, limit: number): Promise<strin
   return Buffer.concat(chunks).toString('utf8');
 }
 
-/** Configuration lives exclusively in this server instance's memory. Nothing is logged. */
+export const DEFAULT_PUBLIC_PROVIDERS = [
+  'https://api.openai.com/v1',
+  'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+  'https://api.siliconflow.cn/v1',
+  'https://api.deepseek.com/v1',
+];
+
+function publicProvider(value: unknown, allowed: string[]): ProviderSettings {
+  const body = exactObject(value, ['baseUrl', 'model', 'apiKey']);
+  const baseUrl = sanitizeBaseUrl(body.baseUrl);
+  if (!allowed.includes(baseUrl)) throw new HttpError(400, 'provider_forbidden', '公网版仅支持设置页列出的服务地址；自定义服务可使用本机版');
+  if (typeof body.model !== 'string' || !body.model.trim() || body.model.length > 256 || /[\u0000-\u001f]/.test(body.model)) throw new HttpError(400, 'invalid_config', '请填写有效模型名');
+  if (typeof body.apiKey !== 'string' || !body.apiKey.trim() || body.apiKey.length > 4096 || /[\u0000-\u001f\u007f-\uffff]/.test(body.apiKey)) throw new HttpError(400, 'invalid_config', '公网识别需要有效 API Key');
+  return { baseUrl, model: body.model.trim(), apiKey: body.apiKey.trim() };
+}
+
+/** Local settings remain in memory; hosted credentials exist only within each request. */
 export function createReviewerServer(options: ServerOptions = {}) {
+  const hosted = options.publicOrigin !== undefined;
+  const publicUrl = hosted ? new URL(options.publicOrigin!) : null;
+  if (publicUrl && (publicUrl.protocol !== 'https:' || publicUrl.origin !== options.publicOrigin)) throw new Error('Public origin must be an exact HTTPS origin');
+  const allowed = (options.allowedProviderUrls ?? DEFAULT_PUBLIC_PROVIDERS).map(sanitizeBaseUrl);
+  if (hosted && (!allowed.length || allowed.some(value => {
+    const url = new URL(value);
+    return url.protocol !== 'https:' || url.port || isIP(url.hostname) || url.hostname.includes(':') || !url.hostname.includes('.') || /(?:^|\.)(localhost|local|internal)$/.test(url.hostname);
+  }))) throw new Error('Public provider allowlist must contain trusted public HTTPS services');
+  // Entries expire, and the map is bounded even under an IP-flood attack.
+  const rates = new Map<string, { count: number; until: number }>();
+  const concurrentByIp = new Map<string, number>();
+  let pending = 0;
   let settings: ProviderSettings = { baseUrl: 'https://api.openai.com/v1', model: '', apiKey: '' };
   const fetchImpl = options.fetchImpl ?? fetch;
   const maxRequestBytes = options.maxRequestBytes ?? 24 * 1024 * 1024;
   const maxResponseBytes = options.maxResponseBytes ?? 2 * 1024 * 1024;
   const active = new Set<AbortController>();
-  const publicSettings = () => ({ baseUrl: settings.baseUrl, model: settings.model, keyConfigured: settings.apiKey.length > 0 });
+  const publicSettings = () => hosted ? { baseUrl: allowed[0], model: '', keyConfigured: false, hosted: true, allowedProviderUrls: allowed } : { baseUrl: settings.baseUrl, model: settings.model, keyConfigured: settings.apiKey.length > 0 };
   const server = createServer(async (request, response) => {
     const address = server.address() as AddressInfo | null;
-    const authority = `127.0.0.1:${address?.port}`;
-    const origin = `http://${authority}`;
+    const authority = publicUrl?.host ?? `127.0.0.1:${address?.port}`;
+    const origin = publicUrl?.origin ?? `http://${authority}`;
     // Enforce Host on every resource to prevent DNS rebinding into the local UI/API.
-    if (request.headers.host !== authority) { send(response, 403, { error: { code: 'host_forbidden', message: '仅允许通过本机 127.0.0.1 地址访问' } }); return; }
+    if (request.headers.host !== authority) { send(response, 403, { error: { code: 'host_forbidden', message: '访问地址不匹配，请使用配置的站点地址' } }); return; }
+    if (hosted) {
+      response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'");
+      response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    }
     const path = request.url?.split('?')[0] ?? '/';
     if (!path.startsWith('/api/')) {
       if (options.webHandler) options.webHandler(request, response);
       else send(response, 404, { error: { code: 'not_found', message: '页面不存在' } });
       return;
     }
+    let release: (() => void) | undefined;
     try {
       const requestOrigin = request.headers.origin;
       const fetchSite = request.headers['sec-fetch-site'];
-      if ((requestOrigin !== undefined && requestOrigin !== origin) || (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none') || (request.method !== 'GET' && requestOrigin !== origin)) throw new HttpError(403, 'origin_forbidden', '请求来源不匹配，请从本机应用页面操作');
+      if ((requestOrigin !== undefined && requestOrigin !== origin) || (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none') || (request.method !== 'GET' && requestOrigin !== origin)) throw new HttpError(403, 'origin_forbidden', '请求来源不匹配，请从应用页面操作');
       if (path === '/api/config' && request.method === 'GET') { send(response, 200, publicSettings()); return; }
       if (path === '/api/config' && request.method === 'POST') {
+        if (hosted) throw new HttpError(405, 'request_credentials_only', '公网版设置仅保存在当前页面内存，请在识别请求中提供配置');
         const body = exactObject(await readJson(request, 16 * 1024), ['baseUrl', 'model', 'apiKey']);
         const baseUrl = sanitizeBaseUrl(body.baseUrl);
         if (typeof body.model !== 'string' || body.model.length > 256 || /[\u0000-\u001f]/.test(body.model)) throw new HttpError(400, 'invalid_config', '模型名须为不超过 256 字符的文本');
@@ -118,11 +159,30 @@ export function createReviewerServer(options: ServerOptions = {}) {
         settings = { baseUrl, model: body.model.trim(), apiKey: 'apiKey' in body ? (body.apiKey as string).trim() : sameProvider ? settings.apiKey : '' };
         send(response, 200, publicSettings()); return;
       }
-      if (path === '/api/recognize' && request.method === 'POST') {
-        const body = exactObject(await readJson(request, maxRequestBytes), ['image']);
+      if ((path === '/api/recognize' || path === '/api/check') && request.method === 'POST') {
+        const checking = path === '/api/check';
+        if (hosted) {
+          // Only trust this header from the loopback proxy, which must overwrite it.
+          const peer = request.socket.remoteAddress;
+          const ip = request.headers['x-real-ip'];
+          if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(peer ?? '') || typeof ip !== 'string' || !isIP(ip)) throw new HttpError(403, 'proxy_required', '代理配置不正确');
+          const now = Date.now();
+          for (const [key, entry] of rates) if (entry.until <= now) rates.delete(key);
+          const count = concurrentByIp.get(ip) ?? 0;
+          if (pending >= (options.maxConcurrentRequests ?? 4) || count >= 2) throw new HttpError(429, 'busy', '当前识别请求较多，请稍后重试；手工测量不受影响');
+          let entry = rates.get(ip);
+          if (!entry) {
+            if (rates.size >= 10000) throw new HttpError(429, 'busy', '服务繁忙，请稍后重试');
+            entry = { count: 0, until: now + (options.rateWindowMs ?? 300000) }; rates.set(ip, entry);
+          }
+          if (entry.count >= (options.requestsPerWindow ?? 10)) throw new HttpError(429, 'rate_limit', '识别请求过于频繁，请稍后重试');
+          entry.count++; pending++; concurrentByIp.set(ip, count + 1);
+          release = () => { pending--; const remaining = (concurrentByIp.get(ip) ?? 1) - 1; if (remaining) concurrentByIp.set(ip, remaining); else concurrentByIp.delete(ip); };
+        }
+        const body = exactObject(await readJson(request, maxRequestBytes), checking ? (hosted ? ['provider'] : []) : hosted ? ['image', 'provider'] : ['image']);
         let image;
-        try { image = validateImageInput(body.image); } catch (error) { throw new HttpError(400, 'invalid_image', (error as Error).message); }
-        const config = { ...settings };
+        try { if (!checking) image = validateImageInput(body.image); } catch (error) { throw new HttpError(400, 'invalid_image', (error as Error).message); }
+        const config = hosted ? publicProvider(body.provider, allowed) : { ...settings };
         if (!config.model) throw new HttpError(400, 'configuration_required', '请先设置服务地址与模型名称');
         const controller = new AbortController();
         active.add(controller);
@@ -134,24 +194,36 @@ export function createReviewerServer(options: ServerOptions = {}) {
         timer.unref();
         try {
           if (response.destroyed || request.aborted) controller.abort();
-          const upstream = await fetchImpl(`${config.baseUrl}/chat/completions`, {
-            method: 'POST', redirect: 'error', signal: controller.signal,
+          const upstream = await fetchImpl(`${config.baseUrl}/${checking ? 'models' : 'chat/completions'}`, {
+            method: checking ? 'GET' : 'POST', redirect: 'error', signal: controller.signal,
             headers: { 'Content-Type': 'application/json', ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}) },
-            body: JSON.stringify({ model: config.model, messages: [
+            body: checking ? undefined : JSON.stringify({ model: config.model, messages: [
               { role: 'system', content: RECOGNITION_PROMPT },
               { role: 'user', content: [
-                { type: 'text', text: `Locate the visible Western blot bands and labels in this ${image.width} by ${image.height} pixel screenshot. Return the required JSON only.` },
-                { type: 'image_url', image_url: { url: image.dataUrl } },
+                { type: 'text', text: `Locate the visible Western blot bands and labels in this ${image!.width} by ${image!.height} pixel screenshot. Return the required JSON only.` },
+                { type: 'image_url', image_url: { url: image!.dataUrl } },
               ] },
             ] }),
           });
           if (!upstream.ok) {
             await upstream.body?.cancel();
-            if (upstream.status === 401 || upstream.status === 403) throw new HttpError(502, 'provider_auth', '视觉服务认证失败，请检查 API Key 和访问权限');
+            const destination = `${config.baseUrl} · ${config.model}`.split(config.apiKey || '\0').join('[REDACTED]');
+            if (upstream.status === 401) throw new HttpError(502, 'provider_auth', `服务商返回 HTTP 401（${destination}）：未通过 API 认证。请核对 Key 是否由此服务地址对应的平台签发，及其是否有效。`);
+            if (upstream.status === 403) throw new HttpError(502, 'provider_forbidden', `服务商返回 HTTP 403（${destination}）：访问被拒绝，不能仅据此认定 Key 错误。请检查账户权限、IP 白名单或地区限制；线上请求从本站服务器发出，与本机出口不同。`);
             if (upstream.status === 429) throw new HttpError(502, 'provider_rate_limit', '视觉服务达到额度或速率限制，请检查账户后重试');
             throw new HttpError(502, 'provider_http', `视觉服务返回 HTTP ${upstream.status}，请检查地址、模型及服务状态`);
           }
           const upstreamText = await limitedResponse(upstream, maxResponseBytes);
+          if (checking) {
+            let models: unknown;
+            try { models = JSON.parse(upstreamText)?.data; } catch { /* Handled below. */ }
+            if (!Array.isArray(models) || !models.every(item => item && typeof item.id === 'string')) throw new HttpError(502, 'invalid_response', '模型列表响应格式无效；此服务可能不支持 GET /models，可直接尝试识别');
+            const modelListed = models.some(item => item.id === config.model);
+            send(response, 200, { modelListed, message: modelListed
+              ? '连接验证通过：可访问模型列表，且包含所填模型。尚未验证图片输入能力；可继续尝试识别。'
+              : '连接验证通过：可访问模型列表，但未列出所填模型。请核对模型名；部分服务不列出所有可用模型。' });
+            return;
+          }
           let payload: { choices?: { message?: { content?: unknown } }[] };
           try { payload = JSON.parse(upstreamText); } catch { throw new HttpError(502, 'invalid_response', '视觉服务响应不是 JSON'); }
           const content = payload?.choices?.[0]?.message?.content;
@@ -176,9 +248,9 @@ export function createReviewerServer(options: ServerOptions = {}) {
       }
       throw new HttpError(404, 'not_found', '接口或请求方法不存在');
     } catch (error) {
-      const failure = error instanceof HttpError ? error : new HttpError(500, 'internal_error', '本机服务处理失败，请重试');
+      const failure = error instanceof HttpError ? error : new HttpError(500, 'internal_error', '服务处理失败，请重试');
       send(response, failure.status, { error: { code: failure.code, message: failure.message } });
-    }
+    } finally { release?.(); }
   });
   server.requestTimeout = 30_000;
   server.headersTimeout = 15_000;

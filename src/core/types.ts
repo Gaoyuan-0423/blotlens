@@ -1,4 +1,4 @@
-export const APP_VERSION = "0.1.0";
+export const APP_VERSION = "0.2.1";
 export const ALGORITHM_VERSION = "screenshot-density-1";
 export interface MeasurementPolicy {
   maxBandOverlapFraction: 0 | 0.1;

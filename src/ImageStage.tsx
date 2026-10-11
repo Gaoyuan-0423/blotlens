@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import type { Rect, ReviewSession } from "./core/types";
 import { drawRect, isRoiDrag } from "./drawing";
@@ -174,7 +175,7 @@ export function ImageStage({
       viewBox={`0 0 ${session.source.width} ${session.source.height}`}
       role="img"
       tabIndex={0}
-      aria-label="原截图与可编辑取样框"
+      aria-label={t("原截图与可编辑取样框")}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.preventDefault();
@@ -305,9 +306,15 @@ export function ImageStage({
         style={{ filter: `contrast(${contrast}%)` }}
       />
       {showRois && !drawPanel && (
-        <rect {...session.panel} fill="none" stroke="#8ea69d"
-          strokeWidth={scale} strokeDasharray={`${6 * scale} ${5 * scale}`}
-          pointerEvents="none" aria-label="WB 识别区域" />
+        <rect
+          {...session.panel}
+          fill="none"
+          stroke="#8ea69d"
+          strokeWidth={scale}
+          strokeDasharray={`${6 * scale} ${5 * scale}`}
+          pointerEvents="none"
+          aria-label={t("WB 识别区域")}
+        />
       )}
       {showRois &&
         session.rows.flatMap((row) =>
@@ -347,7 +354,7 @@ export function ImageStage({
                     style={drawing ? { cursor: "crosshair" } : undefined}
                     role="button"
                     aria-pressed={selected}
-                    aria-label={`${row.label} ${session.lanes.find((l) => l.id === band.laneId)?.label} ${index === null ? "条带" : "背景 " + (index + 1)}`}
+                    aria-label={`${row.label} ${session.lanes.find((l) => l.id === band.laneId)?.label} ${index === null ? t("条带") : "背景 " + (index + 1)}`}
                     onFocus={() => {
                       if (!drawing && !pointerFocusing.current && !selected)
                         onSelect(s);

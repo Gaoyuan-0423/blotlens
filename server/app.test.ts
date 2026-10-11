@@ -172,3 +172,100 @@ describe('input helpers', () => {
     expect(() => validateImageInput({ ...requestBody.image, dataUrl: 'data:image/png;base64,YWJjZA==' })).toThrow('文件头');
   });
 });
+
+describe('public BYOK mode', () => {
+  async function hosted(options: ServerOptions = {}) {
+    const origin = await listen(createReviewerServer({ publicOrigin: 'https://blotlens.top', allowedProviderUrls: ['https://vision.example/v1'], ...options }));
+    const call = (path: string, body?: unknown, headers: Record<string, string> = {}) => new Promise<{ status: number; data: any; text: string; headers: import('node:http').IncomingHttpHeaders }>((resolve, reject) => {
+      const req = httpRequest(`${origin}${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { Host: 'blotlens.top', Origin: 'https://blotlens.top', 'X-Real-IP': '203.0.113.5', 'Content-Type': 'application/json', ...headers } }, res => {
+        const chunks: Buffer[] = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => { const text = Buffer.concat(chunks).toString(); resolve({ status: res.statusCode!, data: JSON.parse(text), text, headers: res.headers }); });
+      });
+      req.on('error', reject); req.end(body === undefined ? undefined : JSON.stringify(body));
+    });
+    return call;
+  }
+  const provider = (key = 'alice-secret') => ({ baseUrl: 'https://vision.example/v1', model: 'vision-model', apiKey: key });
+  const valid = () => Response.json({ choices: [{ message: { content: JSON.stringify(fixture()) } }] });
+
+  it('isolates simultaneous user keys and never publishes shared settings', async () => {
+    const keys: string[] = [];
+    const call = await hosted({ fetchImpl: async (_url, init) => { keys.push(new Headers(init?.headers).get('authorization')!); return valid(); } });
+    const [alice, bob] = await Promise.all([
+      call('/api/recognize', { ...requestBody, provider: provider() }),
+      call('/api/recognize', { ...requestBody, provider: provider('bob-secret') }),
+    ]);
+    expect([alice.status, bob.status]).toEqual([200, 200]);
+    expect(keys.sort()).toEqual(['Bearer alice-secret', 'Bearer bob-secret']);
+    expect(alice.text + bob.text).not.toMatch(/alice-secret|bob-secret/);
+    const config = await call('/api/config');
+    expect(config.data).toMatchObject({ hosted: true, model: '', keyConfigured: false });
+    expect(config.headers['content-security-policy']).toContain("connect-src 'self'");
+    expect((await call('/api/config', provider())).status).toBe(405);
+    expect((await call('/api/recognize', requestBody)).status).toBe(400);
+  });
+
+  it('blocks custom hosts, paths, redirects, missing keys and cross-site calls before forwarding', async () => {
+    const fetchImpl = vi.fn(async () => valid());
+    const call = await hosted({ fetchImpl });
+    for (const baseUrl of ['https://127.0.0.1/v1', 'http://localhost/v1', 'https://vision.example/v2', 'https://vision.example.evil.test/v1', 'https://vision.example/v1?url=internal']) {
+      expect((await call('/api/recognize', { ...requestBody, provider: { ...provider(), baseUrl } })).status).toBe(400);
+    }
+    expect((await call('/api/recognize', { ...requestBody, provider: provider('') })).status).toBe(400);
+    expect((await call('/api/recognize', { ...requestBody, provider: provider() }, { Origin: 'https://evil.test' })).status).toBe(403);
+    expect((await call('/api/config', undefined, { Host: '127.0.0.1' })).status).toBe(403);
+    expect((await call('/api/recognize', requestBody, { 'X-Real-IP': 'not-an-ip' })).status).toBe(403);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('checks credentials without sending an image and reports the model-list result', async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(input).toBe('https://vision.example/v1/models');
+      expect(init?.method).toBe('GET');
+      expect(init?.body).toBeUndefined();
+      expect(init?.headers).toMatchObject({ Authorization: 'Bearer alice-secret' });
+      return Response.json({ data: [{ id: 'vision-model' }] });
+    });
+    const call = await hosted({ fetchImpl });
+    const result = await call('/api/check', { provider: provider() });
+    expect(result.status).toBe(200);
+    expect(result.data.modelListed).toBe(true);
+    expect(result.text).not.toContain('alice-secret');
+    expect((await call('/api/check', { provider: { ...provider(), model: 'not-listed' } })).data.modelListed).toBe(false);
+    expect((await call('/api/check', { provider: provider() }, { Origin: 'https://evil.test' })).status).toBe(403);
+    expect((await call('/api/check', { provider: { ...provider(), baseUrl: 'https://other.test' } })).status).toBe(400);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([401, 403])('distinguishes upstream HTTP %s without reflecting its body or key', async status => {
+    const call = await hosted({ fetchImpl: async () => new Response('alice-secret private upstream body', { status }) });
+    const result = await call('/api/check', { provider: provider() });
+    expect(result.status).toBe(502);
+    expect(result.data.error.message).toContain(`HTTP ${status}`);
+    expect(result.data.error.message).toContain('https://vision.example/v1');
+    expect(result.text).not.toMatch(/alice-secret|private upstream body/);
+    if (status === 403) expect(result.data.error.message).toContain('不能仅据此认定 Key 错误');
+  });
+
+  it('caps concurrent uploads, releases slots after completion and limits per-IP requests', async () => {
+    let started!: () => void, finish!: () => void;
+    const began = new Promise<void>(resolve => { started = resolve; });
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    const call = await hosted({ maxConcurrentRequests: 1, requestsPerWindow: 1, fetchImpl: async () => { started(); await gate; return valid(); } });
+    const first = call('/api/recognize', { ...requestBody, provider: provider() });
+    await began;
+    expect((await call('/api/recognize', requestBody, { 'X-Real-IP': '203.0.113.6' })).status).toBe(429);
+    finish(); expect((await first).status).toBe(200);
+    expect((await call('/api/recognize', { ...requestBody, provider: provider() })).data.error.code).toBe('rate_limit');
+    expect((await call('/api/recognize', { ...requestBody, provider: provider() }, { 'X-Real-IP': '203.0.113.6' })).status).toBe(200);
+  });
+
+  it('fails closed for unsafe deployment configuration and releases invalid-upload slots', async () => {
+    expect(() => createReviewerServer({ publicOrigin: 'http://blotlens.top' })).toThrow();
+    expect(() => createReviewerServer({ publicOrigin: 'https://blotlens.top', allowedProviderUrls: ['http://localhost'] })).toThrow();
+    const call = await hosted({ maxConcurrentRequests: 1, maxRequestBytes: 1000, fetchImpl: async () => valid() });
+    expect((await call('/api/recognize', { junk: 'x'.repeat(1001) })).status).toBe(413);
+    expect((await call('/api/recognize', { ...requestBody, provider: provider() })).status).toBe(200);
+  });
+});
