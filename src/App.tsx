@@ -65,6 +65,10 @@ interface Config {
   baseUrl: string;
   model: string;
   keyConfigured: boolean;
+  hosted?: boolean;
+  allowedProviderUrls?: string[];
+  /** Hosted mode only: page memory, never included in ReviewSession. */
+  apiKey?: string;
 }
 const defaultConfig: Config = {
   baseUrl: "https://api.openai.com/v1",
@@ -602,6 +606,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           image: input.image,
+          ...(config.hosted ? { provider: { baseUrl: config.baseUrl, model: config.model, apiKey: config.apiKey ?? "" } } : {}),
         }),
         signal: controller.signal,
       });
@@ -761,7 +766,7 @@ export default function App() {
         <div className="header-actions">
           <span className="local-badge">
             <span />
-            本机工作区
+            {config.hosted ? "在线工作区 · 本地测量" : "本机工作区"}
           </span>
           <button
             className="text-button"
@@ -1883,7 +1888,7 @@ export default function App() {
             setConfig(value);
             setSettings(false);
             setNotice(
-              "API 设置已保存在本机服务内存中。点击「自动识别」才会发送截图。",
+              value.hosted ? "API 设置仅保存在当前页面内存，刷新后清除。识别时密钥与截图经本站转发至你选择的服务。" : "API 设置已保存在本机服务内存中。点击「自动识别」才会发送截图。",
             );
           }}
         />
@@ -2055,6 +2060,15 @@ function SettingsModal({
         model,
         ...(key ? { apiKey: key } : clearKey ? { apiKey: "" } : {}),
       };
+      if (config.hosted) {
+        const cleanBase = new URL(baseUrl.trim()).toString().replace(/\/+$/, "");
+        if (!config.allowedProviderUrls?.includes(cleanBase)) throw new Error("请选择列表中的服务地址；自定义服务请使用本机版。");
+        const nextKey = clearKey ? "" : key.trim() || (cleanBase === config.baseUrl ? config.apiKey ?? "" : "");
+        if (!model.trim()) throw new Error("请填写模型名称。");
+        onSave({ ...config, baseUrl: cleanBase, model: model.trim(), apiKey: nextKey, keyConfigured: !!nextKey });
+        setKey("");
+        return;
+      }
       const result = await api<Config>("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2091,7 +2105,8 @@ function SettingsModal({
         </div>
         <p>
           使用支持图片输入的 OpenAI 兼容 Chat Completions
-          接口。截图发送给你选择的服务；灰度测量在本机完成。
+          接口。灰度测量在你的浏览器完成。
+          {config.hosted ? "点击识别时，截图和 API Key 将经 BlotLens 服务器转发给下方服务；本站不保存密钥或截图，模型服务按其政策处理。" : "截图发送给你选择的服务。"}
         </p>
         <form onSubmit={save}>
           <label>
@@ -2099,12 +2114,14 @@ function SettingsModal({
             <input
               required
               type="url"
+              list={config.hosted ? "hosted-providers" : undefined}
               aria-label="Base URL"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="https://api.example.com/v1"
             />
           </label>
+          {config.hosted && <><datalist id="hosted-providers">{config.allowedProviderUrls?.map(url => <option key={url} value={url} />)}</datalist><p className="field-hint">公网版支持：{config.allowedProviderUrls?.join("、")}。模型须支持图片输入；服务列出不代表所有模型均可识别图片。自定义地址可使用本机版。</p></>}
           <label>
             模型名
             <input
@@ -2121,7 +2138,7 @@ function SettingsModal({
             <span className="field-hint">
               {config.keyConfigured
                 ? "已配置；同一服务留空保持，跨服务需重填"
-                : "仅保存在本机服务内存"}
+                : config.hosted ? "仅保存在当前页面内存，刷新后清除" : "仅保存在本机服务内存"}
             </span>
             <input
               aria-label="API Key"
@@ -2130,7 +2147,7 @@ function SettingsModal({
               onChange={(e) => setKey(e.target.value)}
               placeholder={
                 config.keyConfigured
-                  ? "••••••••（服务重启后需重填）"
+                  ? (config.hosted ? "••••••••（页面刷新后需重填）" : "••••••••（服务重启后需重填）")
                   : "输入 API 密钥"
               }
               autoComplete="off"

@@ -1,0 +1,22 @@
+{
+    # Use Let's Encrypt only. Starting this config registers an ACME account.
+    acme_ca https://acme-v02.api.letsencrypt.org/directory
+}
+blotlens.top {
+    encode zstd gzip
+    request_body {
+        max_size 24MB
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        -Server
+    }
+    # No access logs or request body logging; never enable debug on BYOK traffic.
+    reverse_proxy 127.0.0.1:4317 {
+        header_up X-Real-IP {remote_host}
+        header_up -X-Forwarded-Host
+    }
+}
+www.blotlens.top {
+    redir https://blotlens.top{uri} permanent
+}

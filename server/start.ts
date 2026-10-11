@@ -1,10 +1,11 @@
 import { readFile, stat } from 'node:fs/promises';
 import type { RequestListener } from 'node:http';
 import path from 'node:path';
-import { createReviewerServer } from './app';
+import { createReviewerServer, type ServerOptions } from './app';
 
-export async function startLocalApp({ root: reviewerRoot, port, production }: { root: string; port: number; production: boolean }) {
+export async function startLocalApp({ root: reviewerRoot, port, production, publicOrigin, allowedProviderUrls }: { root: string; port: number; production: boolean } & Pick<ServerOptions, 'publicOrigin' | 'allowedProviderUrls'>) {
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('端口须为 1–65535 的整数');
+if (publicOrigin && !production) throw new Error('公网模式必须使用生产构建');
 let closeWeb = async () => {};
 let handler: RequestListener;
 if (!production) {
@@ -29,7 +30,7 @@ if (!production) {
     } catch { response.writeHead(404); response.end('Not found'); }
   };
 }
-const server = createReviewerServer({ webHandler: handler });
+const server = createReviewerServer({ webHandler: handler, publicOrigin, allowedProviderUrls });
 server.on('error', () => { console.error('WB 本机服务启动失败，请检查端口是否被占用。'); process.exitCode = 1; void closeWeb(); });
 server.listen(port, '127.0.0.1', () => { console.log(`WB 截图趋势核对工具：http://127.0.0.1:${port}`); });
 let closing = false;

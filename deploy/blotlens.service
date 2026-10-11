@@ -1,0 +1,33 @@
+[Unit]
+Description=BlotLens public BYOK application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=blotlens
+Group=blotlens
+WorkingDirectory=/opt/blotlens/current
+Environment=NODE_ENV=production
+Environment=REVIEWER_PORT=4317
+Environment=BLOTLENS_PUBLIC_ORIGIN=https://blotlens.top
+EnvironmentFile=-/etc/blotlens.env
+ExecStart=/opt/blotlens-node/bin/node --max-old-space-size=384 /opt/blotlens/current/server/index.mjs --production
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+LimitCORE=0
+UMask=0077
+MemoryMax=768M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
