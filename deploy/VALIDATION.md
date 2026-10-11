@@ -21,3 +21,9 @@
 ## 连接诊断与可选记住配置
 
 2026-10-11：新增 `/api/check` 模型列表诊断与区分 HTTP 401/403 的安全错误提示；默认仍不持久保存密钥，用户可选浏览器 localStorage 保存。单元测试 138 项通过，覆盖来源校验、允许列表、无截图连接验证、错误正文不回显、恢复校验与清除。真实 DeepSeek 认证原因仍待用户在设置中验证；没有接收或使用用户真实 Key。
+
+## 中文 / English interface (2026-10-11)
+
+The v0.2.1 update adds an explicit language selector and browser preference, 482 translated application messages, English chart annotations, localized CSV checks, and linked English/Chinese READMEs. Scientific labels and original model notes remain unchanged. Unit tests verify translation placeholders and dynamic provider errors. Browser checks verify live switching without changing chart geometry, English SVG export, refresh persistence, hosted settings/error messages and a 390 px layout. Optional original-figure tests still require the separately supplied image files.
+
+v0.2.1 增加中文 / English 切换与浏览器语言偏好，翻译界面与检查提示，柱状图随当前语言导出。语言切换不重置取样或改变数值。蛋白、泳道标签和模型原始备注保持原文。

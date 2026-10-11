@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { BandMeasurement, ReviewSession } from "./core/types";
 import { laneColor } from "./chart-colors";
 export function Chart({
@@ -8,10 +9,12 @@ export function Chart({
   measurements: BandMeasurement[];
 }) {
   const rows = session.rows.filter((r) => r.role === "target");
-  const backgroundMode = session.measurementPolicy?.backgroundMode ?? "subtract";
-  const modeLabel = backgroundMode === "none"
-    ? "快速趋势 · 未扣背景"
-    : "背景扣除 · 已扣背景";
+  const backgroundMode =
+    session.measurementPolicy?.backgroundMode ?? "subtract";
+  const modeLabel =
+    backgroundMode === "none"
+      ? t("快速趋势 · 未扣背景")
+      : t("背景扣除 · 已扣背景");
   const maxValue = Math.max(1.2, ...measurements.map((m) => m.relative ?? 0));
   const step = niceStep(maxValue / 4),
     ceiling = Math.ceil(maxValue / step) * step;
@@ -36,7 +39,7 @@ export function Chart({
       xmlns="http://www.w3.org/2000/svg"
       viewBox={`0 0 ${w} ${h}`}
       role="img"
-      aria-label="截图灰度估计的相对强度柱状图"
+      aria-label={t("截图灰度估计的相对强度柱状图")}
       style={{
         width: "100%",
         fontFamily: "Arial, sans-serif",
@@ -45,7 +48,7 @@ export function Chart({
     >
       <rect width={w} height={h} fill="#fff" />
       <text x={24} y={27} fontSize={16} fontWeight={600} fill="#233b3a">
-        截图灰度估计的相对强度
+        {t("截图灰度估计的相对强度")}
       </text>
       <text
         x={24}
@@ -57,20 +60,15 @@ export function Chart({
         {modeLabel}
       </text>
       <text x={24} y={68} fontSize={11} fill="#62716f">
-        单张展示图 · 无误差线 / 无统计检验 ·{" "}
-        {session.reviewed ? "已人工核对" : "待人工核对"}
+        {t("单张展示图 · 无误差线 / 无统计检验 ·")}{" "}
+        {session.reviewed ? t("已人工核对") : t("待人工核对")}
       </text>
       {session.lanes.map((lane, i) => (
         <g
           key={lane.id}
           transform={`translate(${24 + (i % 3) * ((w - 48) / 3)},${89 + Math.floor(i / 3) * 24})`}
         >
-          <rect
-            width={10}
-            height={10}
-            rx={2}
-            fill={laneColor(session, i)}
-          />
+          <rect width={10} height={10} rx={2} fill={laneColor(session, i)} />
           <text x={16} y={9} fontSize={11} fill="#53615f">
             {lane.label.length > 26
               ? lane.label.slice(0, 25) + "…"
@@ -104,7 +102,7 @@ export function Chart({
         fontSize={11}
         fill="#647370"
       >
-        相对对照泳道
+        {t("相对对照泳道")}
       </text>
       {rows.map((row, r) => (
         <g key={row.id}>
@@ -124,7 +122,9 @@ export function Chart({
               <g key={lane.id}>
                 <title>
                   {row.label} / {lane.label}:{" "}
-                  {value == null ? m?.reason || "缺少条带" : value.toFixed(4)}
+                  {value == null
+                    ? t(m?.reason || "缺少条带")
+                    : value.toFixed(4)}
                 </title>
                 {value == null ? (
                   <text
@@ -175,8 +175,8 @@ export function Chart({
       ))}
       <text x={24} y={h - 14} fontSize={10} fill="#7b8885">
         BlotLens ·{" "}
-        {session.source.name.startsWith("synthetic") ? "合成示例 · " : ""}×
-        表示不可计算；请查看测量明细与取样区域
+        {session.source.name.startsWith("synthetic") ? t("合成示例 · ") : ""}
+        {t("× 表示不可计算；请查看测量明细与取样区域")}
       </text>
     </svg>
   );

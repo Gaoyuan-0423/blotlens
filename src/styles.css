@@ -1482,3 +1482,16 @@ td small {
 .lane-color-controls span { overflow-wrap: anywhere; }
 .lane-color-controls input { width: 36px; height: 28px; padding: 2px; flex-shrink: 0; border: 1px solid #dce5de; border-radius: 4px; background: white; cursor: pointer; }
 .chart-style-controls p { margin-bottom: 0; font-size: 11px; line-height: 1.7; }
+
+.language-switch {
+  border: 1px solid var(--line, #dbe4de);
+  border-radius: 7px;
+  padding: 6px 8px;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  max-width: 110px;
+}
+.language-switch:focus-visible { outline: 2px solid #24776f; outline-offset: 2px; }
+html[lang="en"] .chart-card .section-heading { flex-wrap: wrap; }

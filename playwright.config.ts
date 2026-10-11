@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['e2e.spec.ts', 'interactions.spec.ts', 'manual-editing.spec.ts', 'measurement-modes.spec.ts', 'region-recognition.spec.ts', 'hosted-client.spec.ts'],
+  testMatch: ['e2e.spec.ts', 'interactions.spec.ts', 'manual-editing.spec.ts', 'measurement-modes.spec.ts', 'region-recognition.spec.ts', 'hosted-client.spec.ts', 'language.spec.ts'],
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
