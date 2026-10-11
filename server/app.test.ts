@@ -219,6 +219,35 @@ describe('public BYOK mode', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it('checks credentials without sending an image and reports the model-list result', async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(input).toBe('https://vision.example/v1/models');
+      expect(init?.method).toBe('GET');
+      expect(init?.body).toBeUndefined();
+      expect(init?.headers).toMatchObject({ Authorization: 'Bearer alice-secret' });
+      return Response.json({ data: [{ id: 'vision-model' }] });
+    });
+    const call = await hosted({ fetchImpl });
+    const result = await call('/api/check', { provider: provider() });
+    expect(result.status).toBe(200);
+    expect(result.data.modelListed).toBe(true);
+    expect(result.text).not.toContain('alice-secret');
+    expect((await call('/api/check', { provider: { ...provider(), model: 'not-listed' } })).data.modelListed).toBe(false);
+    expect((await call('/api/check', { provider: provider() }, { Origin: 'https://evil.test' })).status).toBe(403);
+    expect((await call('/api/check', { provider: { ...provider(), baseUrl: 'https://other.test' } })).status).toBe(400);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([401, 403])('distinguishes upstream HTTP %s without reflecting its body or key', async status => {
+    const call = await hosted({ fetchImpl: async () => new Response('alice-secret private upstream body', { status }) });
+    const result = await call('/api/check', { provider: provider() });
+    expect(result.status).toBe(502);
+    expect(result.data.error.message).toContain(`HTTP ${status}`);
+    expect(result.data.error.message).toContain('https://vision.example/v1');
+    expect(result.text).not.toMatch(/alice-secret|private upstream body/);
+    if (status === 403) expect(result.data.error.message).toContain('不能仅据此认定 Key 错误');
+  });
+
   it('caps concurrent uploads, releases slots after completion and limits per-IP requests', async () => {
     let started!: () => void, finish!: () => void;
     const began = new Promise<void>(resolve => { started = resolve; });

@@ -108,3 +108,5 @@ npm run evaluate -- --imagej-jar /absolute/path/ij.jar
 ## 公网部署（用户自带 API Key）
 
 公网模式提供独立的每请求密钥处理、服务地址允许列表和请求限制。请按 [Ubuntu 公网部署说明](deploy/README.md) 配置反向代理及 HTTPS；不要直接将默认本机服务端口暴露到互联网。`npm run package:release` 生成无需在服务器安装 npm 依赖的发布包。
+
+公网版设置支持「验证连接」（只请求模型列表）和可选「在此设备记住 API 配置」。记住默认关闭；开启后密钥存入此浏览器 localStorage，刷新恢复，清除密钥或取消记住并保存即可删除。不需要注册网站账户；此功能不会把密钥保存到服务器或分析文件。

@@ -159,7 +159,8 @@ export function createReviewerServer(options: ServerOptions = {}) {
         settings = { baseUrl, model: body.model.trim(), apiKey: 'apiKey' in body ? (body.apiKey as string).trim() : sameProvider ? settings.apiKey : '' };
         send(response, 200, publicSettings()); return;
       }
-      if (path === '/api/recognize' && request.method === 'POST') {
+      if ((path === '/api/recognize' || path === '/api/check') && request.method === 'POST') {
+        const checking = path === '/api/check';
         if (hosted) {
           // Only trust this header from the loopback proxy, which must overwrite it.
           const peer = request.socket.remoteAddress;
@@ -178,9 +179,9 @@ export function createReviewerServer(options: ServerOptions = {}) {
           entry.count++; pending++; concurrentByIp.set(ip, count + 1);
           release = () => { pending--; const remaining = (concurrentByIp.get(ip) ?? 1) - 1; if (remaining) concurrentByIp.set(ip, remaining); else concurrentByIp.delete(ip); };
         }
-        const body = exactObject(await readJson(request, maxRequestBytes), hosted ? ['image', 'provider'] : ['image']);
+        const body = exactObject(await readJson(request, maxRequestBytes), checking ? (hosted ? ['provider'] : []) : hosted ? ['image', 'provider'] : ['image']);
         let image;
-        try { image = validateImageInput(body.image); } catch (error) { throw new HttpError(400, 'invalid_image', (error as Error).message); }
+        try { if (!checking) image = validateImageInput(body.image); } catch (error) { throw new HttpError(400, 'invalid_image', (error as Error).message); }
         const config = hosted ? publicProvider(body.provider, allowed) : { ...settings };
         if (!config.model) throw new HttpError(400, 'configuration_required', '请先设置服务地址与模型名称');
         const controller = new AbortController();
@@ -193,24 +194,36 @@ export function createReviewerServer(options: ServerOptions = {}) {
         timer.unref();
         try {
           if (response.destroyed || request.aborted) controller.abort();
-          const upstream = await fetchImpl(`${config.baseUrl}/chat/completions`, {
-            method: 'POST', redirect: 'error', signal: controller.signal,
+          const upstream = await fetchImpl(`${config.baseUrl}/${checking ? 'models' : 'chat/completions'}`, {
+            method: checking ? 'GET' : 'POST', redirect: 'error', signal: controller.signal,
             headers: { 'Content-Type': 'application/json', ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}) },
-            body: JSON.stringify({ model: config.model, messages: [
+            body: checking ? undefined : JSON.stringify({ model: config.model, messages: [
               { role: 'system', content: RECOGNITION_PROMPT },
               { role: 'user', content: [
-                { type: 'text', text: `Locate the visible Western blot bands and labels in this ${image.width} by ${image.height} pixel screenshot. Return the required JSON only.` },
-                { type: 'image_url', image_url: { url: image.dataUrl } },
+                { type: 'text', text: `Locate the visible Western blot bands and labels in this ${image!.width} by ${image!.height} pixel screenshot. Return the required JSON only.` },
+                { type: 'image_url', image_url: { url: image!.dataUrl } },
               ] },
             ] }),
           });
           if (!upstream.ok) {
             await upstream.body?.cancel();
-            if (upstream.status === 401 || upstream.status === 403) throw new HttpError(502, 'provider_auth', '视觉服务认证失败，请检查 API Key 和访问权限');
+            const destination = `${config.baseUrl} · ${config.model}`.split(config.apiKey || '\0').join('[REDACTED]');
+            if (upstream.status === 401) throw new HttpError(502, 'provider_auth', `服务商返回 HTTP 401（${destination}）：未通过 API 认证。请核对 Key 是否由此服务地址对应的平台签发，及其是否有效。`);
+            if (upstream.status === 403) throw new HttpError(502, 'provider_forbidden', `服务商返回 HTTP 403（${destination}）：访问被拒绝，不能仅据此认定 Key 错误。请检查账户权限、IP 白名单或地区限制；线上请求从本站服务器发出，与本机出口不同。`);
             if (upstream.status === 429) throw new HttpError(502, 'provider_rate_limit', '视觉服务达到额度或速率限制，请检查账户后重试');
             throw new HttpError(502, 'provider_http', `视觉服务返回 HTTP ${upstream.status}，请检查地址、模型及服务状态`);
           }
           const upstreamText = await limitedResponse(upstream, maxResponseBytes);
+          if (checking) {
+            let models: unknown;
+            try { models = JSON.parse(upstreamText)?.data; } catch { /* Handled below. */ }
+            if (!Array.isArray(models) || !models.every(item => item && typeof item.id === 'string')) throw new HttpError(502, 'invalid_response', '模型列表响应格式无效；此服务可能不支持 GET /models，可直接尝试识别');
+            const modelListed = models.some(item => item.id === config.model);
+            send(response, 200, { modelListed, message: modelListed
+              ? '连接验证通过：可访问模型列表，且包含所填模型。尚未验证图片输入能力；可继续尝试识别。'
+              : '连接验证通过：可访问模型列表，但未列出所填模型。请核对模型名；部分服务不列出所有可用模型。' });
+            return;
+          }
           let payload: { choices?: { message?: { content?: unknown } }[] };
           try { payload = JSON.parse(upstreamText); } catch { throw new HttpError(502, 'invalid_response', '视觉服务响应不是 JSON'); }
           const content = payload?.choices?.[0]?.message?.content;

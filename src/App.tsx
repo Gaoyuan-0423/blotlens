@@ -61,15 +61,8 @@ import {
 import { QualityReview, MeasurementChecks } from "./QualityReview";
 import { downloadText, exportOverlay, exportSvg } from "./exports";
 
-interface Config {
-  baseUrl: string;
-  model: string;
-  keyConfigured: boolean;
-  hosted?: boolean;
-  allowedProviderUrls?: string[];
-  /** Hosted mode only: page memory, never included in ReviewSession. */
-  apiKey?: string;
-}
+import { type Config, restoreProvider, persistProvider } from "./provider-config";
+
 const defaultConfig: Config = {
   baseUrl: "https://api.openai.com/v1",
   model: "",
@@ -159,7 +152,11 @@ export default function App() {
     abort = useRef<AbortController | null>(null);
   useEffect(() => {
     api<Config>("/api/config")
-      .then(value => { setConfig(value); setServiceAvailable(true); })
+      .then(value => {
+        let restored = value;
+        try { restored = restoreProvider(value, window.localStorage); } catch { /* Storage may be disabled. */ }
+        setConfig(restored); setServiceAvailable(true);
+      })
       .catch(() => setNotice("本机服务尚未就绪；仍可查看合成示例或手动分析。"));
     return () => abort.current?.abort();
   }, []);
@@ -1888,7 +1885,7 @@ export default function App() {
             setConfig(value);
             setSettings(false);
             setNotice(
-              value.hosted ? "API 设置仅保存在当前页面内存，刷新后清除。识别时密钥与截图经本站转发至你选择的服务。" : "API 设置已保存在本机服务内存中。点击「自动识别」才会发送截图。",
+              value.hosted ? (value.remember && value.apiKey ? "已在此浏览器记住 API 配置，刷新后可恢复；可在设置中清除。" : "API 设置仅保存在当前页面内存，刷新后清除。识别时密钥与截图经本站转发至你选择的服务。") : "API 设置已保存在本机服务内存中。点击「自动识别」才会发送截图。",
             );
           }}
         />
@@ -2048,8 +2045,32 @@ function SettingsModal({
     [model, setModel] = useState(config.model),
     [key, setKey] = useState(""),
     [clearKey, setClearKey] = useState(false),
+    [remember, setRemember] = useState(!!config.remember),
+    [checking, setChecking] = useState(false),
+    [checkResult, setCheckResult] = useState(""),
     [error, setError] = useState(""),
     [saving, setSaving] = useState(false);
+  useEffect(() => { setCheckResult(""); setError(""); }, [baseUrl, model, key, clearKey]);
+  const hostedConfig = (): Config => {
+    const cleanBase = new URL(baseUrl.trim()).toString().replace(/\/+$/, "");
+    if (!config.allowedProviderUrls?.includes(cleanBase)) throw new Error("请选择列表中的服务地址；自定义服务请使用本机版。");
+    const nextKey = clearKey ? "" : key.trim() || (cleanBase === config.baseUrl ? config.apiKey ?? "" : "");
+    if (!model.trim()) throw new Error("请填写模型名称。");
+    return { ...config, baseUrl: cleanBase, model: model.trim(), apiKey: nextKey, keyConfigured: !!nextKey, remember };
+  };
+  const checkConnection = async () => {
+    setChecking(true); setError(""); setCheckResult("");
+    try {
+      const next = hostedConfig();
+      if (!next.apiKey) throw new Error("请先输入 API Key。");
+      const result = await api<{ message: string }>("/api/check", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: { baseUrl: next.baseUrl, model: next.model, apiKey: next.apiKey } }),
+      });
+      setCheckResult(result.message);
+    } catch (e) { setError((e as Error).message); }
+    finally { setChecking(false); }
+  };
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -2061,11 +2082,10 @@ function SettingsModal({
         ...(key ? { apiKey: key } : clearKey ? { apiKey: "" } : {}),
       };
       if (config.hosted) {
-        const cleanBase = new URL(baseUrl.trim()).toString().replace(/\/+$/, "");
-        if (!config.allowedProviderUrls?.includes(cleanBase)) throw new Error("请选择列表中的服务地址；自定义服务请使用本机版。");
-        const nextKey = clearKey ? "" : key.trim() || (cleanBase === config.baseUrl ? config.apiKey ?? "" : "");
-        if (!model.trim()) throw new Error("请填写模型名称。");
-        onSave({ ...config, baseUrl: cleanBase, model: model.trim(), apiKey: nextKey, keyConfigured: !!nextKey });
+        const next = hostedConfig();
+        try { persistProvider(next, window.localStorage); }
+        catch { throw new Error("浏览器无法保存或清除配置。请检查网站存储权限后重试；设置尚未更改。"); }
+        onSave(next);
         setKey("");
         return;
       }
@@ -2106,12 +2126,13 @@ function SettingsModal({
         <p>
           使用支持图片输入的 OpenAI 兼容 Chat Completions
           接口。灰度测量在你的浏览器完成。
-          {config.hosted ? "点击识别时，截图和 API Key 将经 BlotLens 服务器转发给下方服务；本站不保存密钥或截图，模型服务按其政策处理。" : "截图发送给你选择的服务。"}
+          {config.hosted ? "点击识别时，截图和 API Key 将经 BlotLens 服务器转发给下方服务；本站服务器不持久保存密钥或截图，模型服务按其政策处理。" : "截图发送给你选择的服务。"}
         </p>
         <form onSubmit={save}>
           <label>
             Base URL
             <input
+              disabled={checking}
               required
               type="url"
               list={config.hosted ? "hosted-providers" : undefined}
@@ -2125,6 +2146,7 @@ function SettingsModal({
           <label>
             模型名
             <input
+              disabled={checking}
               required
               aria-label="模型名"
               value={model}
@@ -2141,13 +2163,14 @@ function SettingsModal({
                 : config.hosted ? "仅保存在当前页面内存，刷新后清除" : "仅保存在本机服务内存"}
             </span>
             <input
+              disabled={checking}
               aria-label="API Key"
               type="password"
               value={key}
               onChange={(e) => setKey(e.target.value)}
               placeholder={
                 config.keyConfigured
-                  ? (config.hosted ? "••••••••（页面刷新后需重填）" : "••••••••（服务重启后需重填）")
+                  ? (config.hosted ? "••••••••（留空保留当前密钥）" : "••••••••（服务重启后需重填）")
                   : "输入 API 密钥"
               }
               autoComplete="off"
@@ -2156,17 +2179,23 @@ function SettingsModal({
           {config.keyConfigured && (
             <label className="checkbox-line">
               <input
+              disabled={checking}
                 type="checkbox"
                 checked={clearKey}
                 onChange={(e) => setClearKey(e.target.checked)}
               />
-              清除当前密钥
+              清除当前密钥及此设备保存的密钥（保存后生效）
             </label>
           )}
+          {config.hosted && <label className="checkbox-line">
+            <input disabled={checking} type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
+            在此设备记住 API 配置（含密钥）
+          </label>}
+          {config.hosted && <p className="field-hint">默认不记住。开启后密钥保存在此浏览器的网站存储中，刷新后恢复；不是加密保险箱，请仅在个人设备使用。取消勾选或清除密钥并保存即可删除。</p>}
           <div className="settings-note">
             <ShieldCheck size={18} />
             <span>
-              密钥不会写入分析文件或浏览器存储。保存设置不会发送截图；每次识别由你点击触发。
+              {config.hosted ? "密钥不会写入分析文件；只有主动勾选记住时才写入此浏览器。" : "密钥不会写入分析文件或浏览器存储。"}保存设置不会发送截图；每次识别由你点击触发。
             </span>
           </div>
           {error && (
@@ -2174,7 +2203,14 @@ function SettingsModal({
               {error}
             </div>
           )}
-          <button className="primary full" disabled={saving}>
+          {config.hosted && <>
+            <button type="button" className="secondary full" disabled={checking || saving} onClick={checkConnection}>
+              {checking ? "正在验证…" : "验证连接"}
+            </button>
+            <p className="field-hint">使用当前填写的配置访问服务商模型列表，不发送截图，不保存设置；通过不代表支持图片识别。</p>
+            {checkResult && <p role="status">{checkResult}</p>}
+          </>}
+          <button className="primary full" disabled={saving || checking}>
             {saving ? (
               <LoaderCircle className="spin" size={16} />
             ) : (
